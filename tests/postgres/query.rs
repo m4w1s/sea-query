@@ -1398,6 +1398,61 @@ fn insert_enum_literal_cast() {
 }
 
 #[test]
+fn select_schema_qualified_enum_cast() {
+    assert_eq!(
+        Query::select()
+            .column(Char::Id)
+            .from(Char::Table)
+            .and_where(Expr::col(Char::FontSize).eq(Expr::val("large").as_enum("atmos.font_size")))
+            .to_string(PostgresQueryBuilder),
+        r#"SELECT "id" FROM "character" WHERE "font_size" = (CAST('large' AS "atmos"."font_size"))"#
+    );
+}
+
+#[test]
+fn insert_schema_qualified_enum_literal_cast() {
+    let value = sea_query::Enum {
+        type_name: "atmos.FontSizeEnum".to_owned().into(),
+        value: "large".into(),
+    };
+
+    assert_eq!(
+        Query::insert()
+            .into_table(Char::Table)
+            .columns([Char::FontSize])
+            .values_panic([Expr::val(value)])
+            .to_string(PostgresQueryBuilder),
+        r#"INSERT INTO "character" ("font_size") VALUES ('large'::"atmos"."FontSizeEnum")"#
+    );
+}
+
+#[test]
+#[cfg(feature = "postgres-array")]
+fn insert_schema_qualified_enum_array_param_cast() {
+    let value = Value::Array(
+        ArrayType::Enum(Box::new("atmos.FontSizeEnum".to_owned().into())),
+        Some(Box::new(vec![
+            sea_query::Enum {
+                type_name: "atmos.FontSizeEnum".to_owned().into(),
+                value: "large".into(),
+            }
+            .into(),
+        ])),
+    );
+
+    let (statement, _) = Query::insert()
+        .into_table(Char::Table)
+        .columns([Char::FontSize])
+        .values_panic([Expr::val(value)])
+        .build(PostgresQueryBuilder);
+
+    assert_eq!(
+        statement,
+        r#"INSERT INTO "character" ("font_size") VALUES ($1::"atmos"."FontSizeEnum"[])"#
+    );
+}
+
+#[test]
 #[cfg(feature = "postgres-array")]
 fn insert_enum_array_param_cast() {
     let value = Value::Array(

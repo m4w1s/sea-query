@@ -41,7 +41,6 @@ impl QueryBuilder for PostgresQueryBuilder {
             Expr::AsEnum(type_name, expr) => {
                 sql.write_str("CAST(").unwrap();
                 self.prepare_expr_common(expr, sql);
-                let q = self.quote();
                 let type_name = &type_name.0;
                 let (ty, sfx) = if let Some(base) = type_name.strip_suffix("[]") {
                     (base, "[]")
@@ -49,9 +48,7 @@ impl QueryBuilder for PostgresQueryBuilder {
                     (type_name.as_ref(), "")
                 };
                 sql.write_str(" AS ").unwrap();
-                sql.write_char(q.left()).unwrap();
-                sql.write_str(ty).unwrap();
-                sql.write_char(q.right()).unwrap();
+                self.write_type_name(ty, sql);
                 sql.write_str(sfx).unwrap();
                 sql.write_char(')').unwrap();
             }
@@ -434,10 +431,27 @@ impl QueryBuilder for PostgresQueryBuilder {
 impl PostgresQueryBuilder {
     fn write_enum_type_hint(&self, type_name: impl AsRef<str>, sql: &mut impl Write) {
         sql.write_str("::").unwrap();
+        self.write_type_name(type_name.as_ref(), sql);
+    }
+
+    /// Writes an enum type name quoted. A name `schema.type` is the type of
+    /// that schema, written `"schema"."type"`, so an enum outside the
+    /// search path can be cast to.
+    fn write_type_name(&self, type_name: &str, sql: &mut impl Write) {
         let q = self.quote();
-        sql.write_char(q.left()).unwrap();
-        sql.write_str(type_name.as_ref()).unwrap();
-        sql.write_char(q.right()).unwrap();
+        if let Some((schema, name)) = type_name.split_once('.') {
+            sql.write_char(q.left()).unwrap();
+            sql.write_str(schema).unwrap();
+            sql.write_char(q.right()).unwrap();
+            sql.write_char('.').unwrap();
+            sql.write_char(q.left()).unwrap();
+            sql.write_str(name).unwrap();
+            sql.write_char(q.right()).unwrap();
+        } else {
+            sql.write_char(q.left()).unwrap();
+            sql.write_str(type_name).unwrap();
+            sql.write_char(q.right()).unwrap();
+        }
     }
 }
 
